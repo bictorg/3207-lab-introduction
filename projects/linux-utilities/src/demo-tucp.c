@@ -105,7 +105,7 @@ int main(int argc, char *argv[]) {
     cat_file(file_path);
     printf("\n");
 
-    // Optional cleanup
+    // Cleanup ?
     char cleanup_choice;
     printf("Want to remove the test files? (y/n): ");
     scanf(" %c", &cleanup_choice);
