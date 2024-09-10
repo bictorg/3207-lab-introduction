@@ -12,16 +12,18 @@ This project implements a simple version of the Unix `cp` command called `tucp`.
 ## Usage
 
 ```bash
+cd projects/linux-utilities/src
 gcc -o tucp tucp.c
 
-./tucp source destination-file
-./tucp source directory
-./tucp file1 file2 ... directory
+./tucp file dest-file
+./tucp file dest-dir
+./tucp file1 file2 ... dest-dir
 ```
 
 ## Run Demo
 
 ```bash
+cd projects/linux-utilities/src
 gcc -o demo-tucp demo-tucp.c
 ./demo-tucp
 ```
