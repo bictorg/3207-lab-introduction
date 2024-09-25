@@ -1,6 +1,6 @@
 # Pseudocode for Linux Shell
 
-## Deliverable #1: Core Shell Functionality
+## #1 Core Shell Functionality
 
 1. Initialize shell
    - Set up necessary constants and variables
@@ -25,3 +25,22 @@
      - Print Working Directory: Show current directory
      - Change Directory: Change to specified directory
    - Handle errors and edge cases for each command
+
+## #2 External Program Execution
+
+4. Execute external program
+   - Create a new process
+   - In child process:
+     - Locate the program in the system PATH
+     - If found, execute the program
+     - Handle errors (program not found, execution failed)
+   - In parent process:
+     - Wait for child process to complete
+
+5. Program path resolution
+   - Check if the program name includes a path
+     - If yes, verify if it's executable
+   - If no path provided, search in system PATH:
+     - Iterate through PATH directories
+     - Check for executable in each directory
+   - Return full path if found, or indicate failure
