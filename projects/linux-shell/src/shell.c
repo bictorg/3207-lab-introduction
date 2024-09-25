@@ -9,6 +9,8 @@
 
 // Function prototypes
 void execute_builtin(char **args);
+void execute_program(char **args);
+char *get_program_path(char *program);
 
 int main() {
     char input[MAX_INPUT_SIZE];
@@ -45,7 +47,7 @@ int main() {
                     break;
                 }
             } else {
-                printf("Command not found: %s\n", args[0]);
+                execute_program(args);
             }
         }
     }
@@ -88,7 +90,7 @@ void execute_program(char **args) {
         // Child process
         
         // TODO: Should return full path of program IF found or else NULL
-        char *program_path = find_program_in_path(args[0]);
+        char *program_path = get_program_path(args[0]);
         if (program_path == NULL) {
             fprintf(stderr, "Command not found: %s\n", args[0]);
             exit(1);
@@ -105,15 +107,38 @@ void execute_program(char **args) {
     }
 }
 
-char *find_program_in_path(char *program) {
-    // TODO: First, check if the program is specified with a full path
+char *get_program_path(char *program) {
+    // First, check if the program is specified with a full path
+    if (strchr(program, '/') != NULL) {
+        if (access(program, X_OK) == 0) {
+            return strdup(program);
+        }
+        return NULL;
+    }
 
-    // TODO: If not, search in PATH
+    // If not, search in PATH
+    char *path = getenv("PATH");
+    if (path == NULL) {
+        return NULL;
+    }
 
-    // TODO: Make a copy of PATH as strtok modifies the string
+    // Make a copy of PATH as strtok modifies the string
+    char *path_copy = strdup(path);
+    char *dir = strtok(path_copy, ":");
+    
+    while (dir != NULL) {
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir, program);
+        
+        // Check if the program exists and is executable
+        if (access(full_path, X_OK) == 0) {
+            free(path_copy);
+            return strdup(full_path);
+        }
+        
+        dir = strtok(NULL, ":");
+    }
 
-    // TODO: Check if the program exists and is executable
-
-    // TODO: Free path copy space and return NULL
+    free(path_copy);
     return NULL;
 }
