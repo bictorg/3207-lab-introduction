@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #define MAX_INPUT_SIZE 1024
 #define MAX_ARGS 64
@@ -76,4 +77,43 @@ void execute_builtin(char **args) {
             perror("chdir");
         }
     }
+}
+
+void execute_program(char **args) {
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+    } else if (pid == 0) {
+        // Child process
+        
+        // TODO: Should return full path of program IF found or else NULL
+        char *program_path = find_program_in_path(args[0]);
+        if (program_path == NULL) {
+            fprintf(stderr, "Command not found: %s\n", args[0]);
+            exit(1);
+        }
+        
+        // Replace the child process with the new program
+        if (execv(program_path, args) == -1) {
+            perror("execv");
+            exit(1);
+        }
+    } else {
+        // Parent process waits for the child to complete
+        waitpid(pid, NULL, 0);
+    }
+}
+
+char *find_program_in_path(char *program) {
+    // TODO: First, check if the program is specified with a full path
+
+    // TODO: If not, search in PATH
+
+    // TODO: Make a copy of PATH as strtok modifies the string
+
+    // TODO: Check if the program exists and is executable
+
+    // TODO: Free path copy space and return NULL
+    return NULL;
 }
