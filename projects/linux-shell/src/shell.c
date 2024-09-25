@@ -7,7 +7,7 @@
 #define MAX_ARGS 64
 
 // Function prototypes
-void execute_builtin(char **args);  // TODO: Implement this function in the next commit
+void execute_builtin(char **args);
 
 int main() {
     char input[MAX_INPUT_SIZE];
@@ -44,7 +44,6 @@ int main() {
                     break;
                 }
             } else {
-                // TODO: Implement custom executable in next commit
                 printf("Command not found: %s\n", args[0]);
             }
         }
@@ -54,5 +53,27 @@ int main() {
 }
 
 void execute_builtin(char **args) {
-    printf("Built-in command execution not yet implemented.\n");
+    // Execute built-in commands
+    if (strcmp(args[0], "exit") == 0) {
+        printf("Exiting shell...\n");
+    } else if (strcmp(args[0], "help") == 0) {
+        printf("Built-in commands:\n");
+        printf("  exit - Exit the shell\n");
+        printf("  help - Display this help message\n");
+        printf("  pwd - Print current working directory\n");
+        printf("  cd <directory> - Change current working directory\n");
+    } else if (strcmp(args[0], "pwd") == 0) {
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            printf("%s\n", cwd);
+        } else {
+            perror("getcwd");
+        }
+    } else if (strcmp(args[0], "cd") == 0) {
+        if (args[1] == NULL) {
+            fprintf(stderr, "cd: missing argument\n");
+        } else if (chdir(args[1]) != 0) {
+            perror("chdir");
+        }
+    }
 }
