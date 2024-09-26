@@ -84,7 +84,8 @@ Let’s say that we want a parent process P1 to write data to a pipe and have it
 
 P1 first creates a pipe and then creates P2 using fork(). The diagram below depicts the Filed Descriptor Tables (FDTs) of P1 and P2, assuming that the pipe syscall set the process file descriptor numbers 3 and 4 to point to the read and write end of the pipe respectively. Remember that because P2 is created using fork(), P1 and P2 have identical FDTs that point to the same file descriptions. 
 
-Picture 1 and Picture 2 Here  
+![Picture 1](./assets/Picture1.png)  
+![Picture 2](./assets/Picture2.png)  
 
 Then P1 calls close(3) and P2 calls close(4). This means that now P1 only has an open file descriptor for the write end of the pipe, fd(4), and P2 only has an open descriptor for the read end, fd(3). P1 can happily write data to the write end and P2 will continue to read this data until either 
 

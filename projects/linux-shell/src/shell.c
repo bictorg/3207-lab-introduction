@@ -3,9 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include "helpers.h"
 
 #define MAX_INPUT_SIZE 1024
-#define MAX_ARGS 64
 
 // Function prototypes
 void execute_builtin(char **args);
@@ -14,8 +14,7 @@ char *get_program_path(char *program);
 
 int main() {
     char input[MAX_INPUT_SIZE];
-    char *args[MAX_ARGS];  // Array of pointers to store command arguments
-    char *token;
+    char **args;  // Array of pointers to store command arguments
 
     while (1) {
         printf("shell> ");
@@ -29,27 +28,28 @@ int main() {
         // Remove newline character from the input
         input[strcspn(input, "\n")] = 0;
 
-        // Tokenize input into separate arguments
-        int arg_count = 0;
-        token = strtok(input, " ");  // Get the first token (word)
-        while (token != NULL && arg_count < MAX_ARGS - 1) {
-            args[arg_count++] = token;  // Store pointer to the token
-            token = strtok(NULL, " ");  // Get the next token
-        }
-        args[arg_count] = NULL;  // Null-terminate the argument list
+        // Use the parse function from helpers.c
+        char *input_copy = strdup(input);
+        args = parse(input_copy, " ");
 
-        if (arg_count > 0) {
+        if (args != NULL && args[0] != NULL) {
             // Check if the command is a built-in function
             if (strcmp(args[0], "exit") == 0 || strcmp(args[0], "help") == 0 ||
                 strcmp(args[0], "pwd") == 0 || strcmp(args[0], "cd") == 0) {
                 execute_builtin(args);
                 if (strcmp(args[0], "exit") == 0) {
+                    free(input_copy);
+                    free(args);
                     break;
                 }
             } else {
                 execute_program(args);
             }
         }
+
+        // Free the memory allocated by parse function and strdup
+        free(input_copy);
+        free(args);
     }
 
     return 0;
@@ -89,7 +89,6 @@ void execute_program(char **args) {
     } else if (pid == 0) {
         // Child process
         
-        // TODO: Should return full path of program IF found or else NULL
         char *program_path = get_program_path(args[0]);
         if (program_path == NULL) {
             fprintf(stderr, "Command not found: %s\n", args[0]);
