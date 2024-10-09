@@ -4,3 +4,5 @@
 !*.*
 !*/
 *.exe
+
+projects/linux-shell/src/shell.temp.c
