@@ -4,13 +4,27 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include "helpers.h"
+#include <fcntl.h>
+#include <sys/types.h>
+#include <errno.h>
 
 #define MAX_INPUT_SIZE 1024
+#define MAX_ARGS 64
+#define MAX_PIPES 10
+#define MAX_BACKGROUND_JOBS 64
+
+// background job PIDs
+pid_t background_jobs[MAX_BACKGROUND_JOBS];
+int num_background_jobs = 0;
 
 // Function prototypes
 void execute_builtin(char **args);
-void execute_program(char **args);
+void execute_program(char **args, int input_fd, int output_fd, int run_in_background);
 char *get_program_path(char *program);
+void parse_and_execute(char *input);
+void execute_pipeline(char ***commands, int num_commands);
+void add_background_job(pid_t pid);
+void wait_for_background_jobs();
 
 int main() {
     char input[MAX_INPUT_SIZE];
@@ -43,7 +57,8 @@ int main() {
                     break;
                 }
             } else {
-                execute_program(args);
+                // @TODO: use input_fd, output_fd, run_in_background
+                execute_program(args, 0, 0, 0);
             }
         }
 
@@ -81,7 +96,8 @@ void execute_builtin(char **args) {
     }
 }
 
-void execute_program(char **args) {
+// @TODO: use input_fd, output_fd, run_in_background
+void execute_program(char **args, int input_fd, int output_fd, int run_in_background) {
     pid_t pid = fork();
 
     if (pid == -1) {
