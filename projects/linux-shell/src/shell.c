@@ -28,46 +28,51 @@ void wait_for_background_jobs();
 
 int main() {
     char input[MAX_INPUT_SIZE];
-    char **args;  // Array of pointers to store command arguments
 
     while (1) {
         printf("shell> ");
         fflush(stdout);
 
-        // Read user input and stop when Ctrl+D is pressed
         if (fgets(input, sizeof(input), stdin) == NULL) {
             break;
         }
 
-        // Remove newline character from the input
         input[strcspn(input, "\n")] = 0;
-
-        // Use the parse function from helpers.c
-        char *input_copy = strdup(input);
-        args = parse(input_copy, " ");
-
-        if (args != NULL && args[0] != NULL) {
-            // Check if the command is a built-in function
-            if (strcmp(args[0], "exit") == 0 || strcmp(args[0], "help") == 0 ||
-                strcmp(args[0], "pwd") == 0 || strcmp(args[0], "cd") == 0) {
-                execute_builtin(args);
-                if (strcmp(args[0], "exit") == 0) {
-                    free(input_copy);
-                    free(args);
-                    break;
-                }
-            } else {
-                // @TODO: use input_fd, output_fd, run_in_background
-                execute_program(args, 0, 0, 0);
-            }
-        }
-
-        // Free the memory allocated by parse function and strdup
-        free(input_copy);
-        free(args);
+        parse_and_execute(input);
     }
 
     return 0;
+}
+
+void parse_and_execute(char *input) {
+    char *commands[MAX_PIPES];
+    int num_commands = 0;
+    char *token = strtok(input, "|");
+    
+    while (token != NULL && num_commands < MAX_PIPES) {
+        commands[num_commands++] = token;
+        token = strtok(NULL, "|");
+    }
+
+    char ***parsed_commands = malloc(num_commands * sizeof(char **));
+    for (int i = 0; i < num_commands; i++) {
+        parsed_commands[i] = malloc(MAX_ARGS * sizeof(char *));
+        int arg_count = 0;
+        token = strtok(commands[i], " ");
+        while (token != NULL && arg_count < MAX_ARGS - 1) {
+            parsed_commands[i][arg_count++] = token;
+            token = strtok(NULL, " ");
+        }
+        parsed_commands[i][arg_count] = NULL;
+    }
+
+    execute_pipeline(parsed_commands, num_commands);
+
+    // Free all allocated memory
+    for (int i = 0; i < num_commands; i++) {
+        free(parsed_commands[i]);
+    }
+    free(parsed_commands);
 }
 
 void execute_builtin(char **args) {
