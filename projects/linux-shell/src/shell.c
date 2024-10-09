@@ -76,15 +76,16 @@ void parse_and_execute(char *input) {
 }
 
 void execute_builtin(char **args) {
-    // Execute built-in commands
     if (strcmp(args[0], "exit") == 0) {
         printf("Exiting shell...\n");
+        exit(0);
     } else if (strcmp(args[0], "help") == 0) {
         printf("Built-in commands:\n");
         printf("  exit - Exit the shell\n");
         printf("  help - Display this help message\n");
         printf("  pwd - Print current working directory\n");
         printf("  cd <directory> - Change current working directory\n");
+        printf("  wait - Wait for all background processes to finish\n");
     } else if (strcmp(args[0], "pwd") == 0) {
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -98,10 +99,18 @@ void execute_builtin(char **args) {
         } else if (chdir(args[1]) != 0) {
             perror("chdir");
         }
+        // Print current directory after changing
+        char cwd[1024];
+        if (getcwd(cwd, sizeof(cwd)) != NULL) {
+            printf("%s\n", cwd);
+        } else {
+            perror("getcwd");
+        }
+    } else if (strcmp(args[0], "wait") == 0) {
+        wait_for_background_jobs();
     }
 }
 
-// @TODO: use input_fd, output_fd, run_in_background
 void execute_program(char **args, int input_fd, int output_fd, int run_in_background) {
     pid_t pid = fork();
 
@@ -109,6 +118,14 @@ void execute_program(char **args, int input_fd, int output_fd, int run_in_backgr
         perror("fork");
     } else if (pid == 0) {
         // Child process
+        if (input_fd != STDIN_FILENO) {
+            dup2(input_fd, STDIN_FILENO);
+            close(input_fd);
+        }
+        if (output_fd != STDOUT_FILENO) {
+            dup2(output_fd, STDOUT_FILENO);
+            close(output_fd);
+        }
         
         char *program_path = get_program_path(args[0]);
         if (program_path == NULL) {
@@ -116,14 +133,22 @@ void execute_program(char **args, int input_fd, int output_fd, int run_in_backgr
             exit(1);
         }
         
-        // Replace the child process with the new program
         if (execv(program_path, args) == -1) {
             perror("execv");
             exit(1);
         }
     } else {
-        // Parent process waits for the child to complete
-        waitpid(pid, NULL, 0);
+        // Parent process
+        if (input_fd != STDIN_FILENO) close(input_fd);
+        if (output_fd != STDOUT_FILENO) close(output_fd);
+        
+        if (run_in_background) {
+            printf("[%d] %d\n", num_background_jobs + 1, pid);
+            add_background_job(pid);
+        } else {
+            int status;
+            waitpid(pid, &status, 0);
+        }
     }
 }
 
@@ -161,4 +186,96 @@ char *get_program_path(char *program) {
 
     free(path_copy);
     return NULL;
+}
+
+void execute_pipeline(char ***commands, int num_commands) {
+    int pipes[MAX_PIPES][2];
+    
+    // Create pipes for all but the last command
+    for (int i = 0; i < num_commands - 1; i++) {
+        if (pipe(pipes[i]) == -1) {
+            perror("pipe");
+            return;
+        }
+    }
+
+    for (int i = 0; i < num_commands; i++) {
+        int input_fd = (i == 0) ? STDIN_FILENO : pipes[i-1][0];
+        int output_fd = (i == num_commands - 1) ? STDOUT_FILENO : pipes[i][1];
+
+        // Handle input redirection
+        for (int j = 0; commands[i][j] != NULL; j++) {
+            if (strcmp(commands[i][j], "<") == 0 && commands[i][j+1] != NULL) {
+                int fd = open(commands[i][j+1], O_RDONLY);
+                if (fd == -1) {
+                    perror("open");
+                    return;
+                }
+                input_fd = fd;
+                // Remove redirection symbols / filename from arguments
+                for (int k = j; commands[i][k] != NULL; k++) {
+                    commands[i][k] = commands[i][k+2];
+                }
+                break;
+            }
+        }
+
+        // Handle output redirection
+        for (int j = 0; commands[i][j] != NULL; j++) {
+            if (strcmp(commands[i][j], ">") == 0 && commands[i][j+1] != NULL) {
+                int fd = open(commands[i][j+1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
+                if (fd == -1) {
+                    perror("open");
+                    return;
+                }
+                output_fd = fd;
+                // Remove redirection symbols / filename from arguments
+                commands[i][j] = NULL;
+                break;
+            }
+        }
+
+        // Check if cmd should run in the background
+        int run_in_background = 0;
+        int last_arg = 0;
+        while (commands[i][last_arg] != NULL) last_arg++;
+        if (last_arg > 0 && strcmp(commands[i][last_arg - 1], "&") == 0) {
+            run_in_background = 1;
+            commands[i][last_arg - 1] = NULL;
+        }
+
+        // Execute built-in commands or external programs
+        if (strcmp(commands[i][0], "exit") == 0 || strcmp(commands[i][0], "help") == 0 ||
+            strcmp(commands[i][0], "pwd") == 0 || strcmp(commands[i][0], "cd") == 0 ||
+            strcmp(commands[i][0], "wait") == 0) {
+            execute_builtin(commands[i]);
+        } else {
+            execute_program(commands[i], input_fd, output_fd, run_in_background);
+        }
+    }
+
+    // Close all pipe file descriptors in the parent
+    for (int i = 0; i < num_commands - 1; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+}
+
+void add_background_job(pid_t pid) {
+    if (num_background_jobs < MAX_BACKGROUND_JOBS) {
+        background_jobs[num_background_jobs++] = pid;
+    } else {
+        fprintf(stderr, "Maximum number of background jobs reached\n");
+    }
+}
+
+void wait_for_background_jobs() {
+    for (int i = 0; i < num_background_jobs; i++) {
+        int status;
+        pid_t pid = waitpid(background_jobs[i], &status, 0);
+        if (pid > 0) {
+            printf("[%d] Done\n", i + 1);
+        }
+    }
+    num_background_jobs = 0;
 }
