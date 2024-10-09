@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include "helpers.h"
 #include <fcntl.h>
 #include <sys/types.h>
 #include <errno.h>
@@ -12,11 +13,11 @@
 #define MAX_PIPES 10
 #define MAX_BACKGROUND_JOBS 64
 
-// background job PIDs
+// List of background job PIDs
 pid_t background_jobs[MAX_BACKGROUND_JOBS];
 int num_background_jobs = 0;
 
-// Function prototypes
+// Function declarations
 void execute_builtin(char **args);
 void execute_program(char **args, int input_fd, int output_fd, int run_in_background);
 char *get_program_path(char *program);
@@ -36,6 +37,7 @@ int main() {
             break;
         }
 
+        // Get rid of the newline at the end
         input[strcspn(input, "\n")] = 0;
         parse_and_execute(input);
     }
@@ -43,73 +45,80 @@ int main() {
     return 0;
 }
 
+// Break down the input and run commands
 void parse_and_execute(char *input) {
     char *commands[MAX_PIPES];
     int num_commands = 0;
     char *token = strtok(input, "|");
     
+    // Split input by pipe symbol
     while (token != NULL && num_commands < MAX_PIPES) {
         commands[num_commands++] = token;
         token = strtok(NULL, "|");
     }
 
+    // Break each command into words
     char ***parsed_commands = malloc(num_commands * sizeof(char **));
     for (int i = 0; i < num_commands; i++) {
-        parsed_commands[i] = malloc(MAX_ARGS * sizeof(char *));
-        int arg_count = 0;
-        token = strtok(commands[i], " ");
-        while (token != NULL && arg_count < MAX_ARGS - 1) {
-            parsed_commands[i][arg_count++] = token;
-            token = strtok(NULL, " ");
-        }
-        parsed_commands[i][arg_count] = NULL;
+        parsed_commands[i] = parse(commands[i], " ");
     }
 
     execute_pipeline(parsed_commands, num_commands);
 
-    // Free all allocated memory
+    // Clean up memory
     for (int i = 0; i < num_commands; i++) {
         free(parsed_commands[i]);
     }
     free(parsed_commands);
 }
 
+// Run built-in shell commands
 void execute_builtin(char **args) {
+    // Exit: quit the shell
     if (strcmp(args[0], "exit") == 0) {
-        printf("Exiting shell...\n");
+        printf("Bye!\n");
         exit(0);
-    } else if (strcmp(args[0], "help") == 0) {
-        printf("Built-in commands:\n");
-        printf("  exit - Exit the shell\n");
-        printf("  help - Display this help message\n");
-        printf("  pwd - Print current working directory\n");
-        printf("  cd <directory> - Change current working directory\n");
-        printf("  wait - Wait for all background processes to finish\n");
-    } else if (strcmp(args[0], "pwd") == 0) {
+    } 
+    // Help: show available commands
+    else if (strcmp(args[0], "help") == 0) {
+        printf("You can use these commands:\n");
+        printf("  exit - Quit the shell\n");
+        printf("  help - Show this message\n");
+        printf("  pwd - Show current folder\n");
+        printf("  cd <folder> - Change folder\n");
+        printf("  wait - Wait for background tasks\n");
+    } 
+    // PWD: print working directory
+    else if (strcmp(args[0], "pwd") == 0) {
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
             printf("%s\n", cwd);
         } else {
             perror("getcwd");
         }
-    } else if (strcmp(args[0], "cd") == 0) {
+    } 
+    // CD: change directory
+    else if (strcmp(args[0], "cd") == 0) {
         if (args[1] == NULL) {
-            fprintf(stderr, "cd: missing argument\n");
+            fprintf(stderr, "cd: need a folder name\n");
         } else if (chdir(args[1]) != 0) {
             perror("chdir");
         }
-        // Print current directory after changing
+        // Show new folder after changing
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)) != NULL) {
             printf("%s\n", cwd);
         } else {
             perror("getcwd");
         }
-    } else if (strcmp(args[0], "wait") == 0) {
+    } 
+    // Wait: wait for background jobs
+    else if (strcmp(args[0], "wait") == 0) {
         wait_for_background_jobs();
     }
 }
 
+// Run a program
 void execute_program(char **args, int input_fd, int output_fd, int run_in_background) {
     pid_t pid = fork();
 
@@ -117,21 +126,25 @@ void execute_program(char **args, int input_fd, int output_fd, int run_in_backgr
         perror("fork");
     } else if (pid == 0) {
         // Child process
+        // Set up input redirection
         if (input_fd != STDIN_FILENO) {
             dup2(input_fd, STDIN_FILENO);
             close(input_fd);
         }
+        // Set up output redirection
         if (output_fd != STDOUT_FILENO) {
             dup2(output_fd, STDOUT_FILENO);
             close(output_fd);
         }
         
+        // Find the full path of the program
         char *program_path = get_program_path(args[0]);
         if (program_path == NULL) {
-            fprintf(stderr, "Command not found: %s\n", args[0]);
+            fprintf(stderr, "Can't find program: %s\n", args[0]);
             exit(1);
         }
         
+        // Run the program
         if (execv(program_path, args) == -1) {
             perror("execv");
             exit(1);
@@ -151,8 +164,9 @@ void execute_program(char **args, int input_fd, int output_fd, int run_in_backgr
     }
 }
 
+// Find the full path of a program
 char *get_program_path(char *program) {
-    // First, check if the program is specified with a full path
+    // Check if it's already a full path
     if (strchr(program, '/') != NULL) {
         if (access(program, X_OK) == 0) {
             return strdup(program);
@@ -160,13 +174,12 @@ char *get_program_path(char *program) {
         return NULL;
     }
 
-    // If not, search in PATH
+    // Look for the program in PATH
     char *path = getenv("PATH");
     if (path == NULL) {
         return NULL;
     }
 
-    // Make a copy of PATH as strtok modifies the string
     char *path_copy = strdup(path);
     char *dir = strtok(path_copy, ":");
     
@@ -174,7 +187,7 @@ char *get_program_path(char *program) {
         char full_path[1024];
         snprintf(full_path, sizeof(full_path), "%s/%s", dir, program);
         
-        // Check if the program exists and is executable
+        // Check if we can run this file
         if (access(full_path, X_OK) == 0) {
             free(path_copy);
             return strdup(full_path);
@@ -187,10 +200,11 @@ char *get_program_path(char *program) {
     return NULL;
 }
 
+// Run a series of piped commands
 void execute_pipeline(char ***commands, int num_commands) {
     int pipes[MAX_PIPES][2];
     
-    // Create pipes for all but the last command
+    // Make pipes for all but the last command
     for (int i = 0; i < num_commands - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
@@ -211,7 +225,7 @@ void execute_pipeline(char ***commands, int num_commands) {
                     return;
                 }
                 input_fd = fd;
-                // Remove redirection symbols / filename from arguments
+                // Remove < and filename from args
                 for (int k = j; commands[i][k] != NULL; k++) {
                     commands[i][k] = commands[i][k+2];
                 }
@@ -228,13 +242,13 @@ void execute_pipeline(char ***commands, int num_commands) {
                     return;
                 }
                 output_fd = fd;
-                // Remove redirection symbols / filename from arguments
+                // Remove > and filename from args
                 commands[i][j] = NULL;
                 break;
             }
         }
 
-        // Check if cmd should run in the background
+        // Check if we should run in background
         int run_in_background = 0;
         int last_arg = 0;
         while (commands[i][last_arg] != NULL) last_arg++;
@@ -243,7 +257,7 @@ void execute_pipeline(char ***commands, int num_commands) {
             commands[i][last_arg - 1] = NULL;
         }
 
-        // Execute built-in commands or external programs
+        // Run built-in or external command
         if (strcmp(commands[i][0], "exit") == 0 || strcmp(commands[i][0], "help") == 0 ||
             strcmp(commands[i][0], "pwd") == 0 || strcmp(commands[i][0], "cd") == 0 ||
             strcmp(commands[i][0], "wait") == 0) {
@@ -253,28 +267,27 @@ void execute_pipeline(char ***commands, int num_commands) {
         }
     }
 
-    // Close all pipe file descriptors in the parent
+    // Close all pipe file descriptors in parent
     for (int i = 0; i < num_commands - 1; i++) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
 }
 
+// Add a job to the background list
 void add_background_job(pid_t pid) {
     if (num_background_jobs < MAX_BACKGROUND_JOBS) {
         background_jobs[num_background_jobs++] = pid;
     } else {
-        fprintf(stderr, "Maximum number of background jobs reached\n");
+        fprintf(stderr, "Too many background jobs\n");
     }
 }
 
+// Wait for all background jobs to finish
 void wait_for_background_jobs() {
     for (int i = 0; i < num_background_jobs; i++) {
         int status;
-        pid_t pid = waitpid(background_jobs[i], &status, 0);
-        if (pid > 0) {
-            printf("[%d] Done\n", i + 1);
-        }
+        waitpid(background_jobs[i], &status, 0);
     }
     num_background_jobs = 0;
 }
